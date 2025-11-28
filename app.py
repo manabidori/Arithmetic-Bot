@@ -1,6 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import os
+import PIL.Image
 
 # ページ設定
 st.set_page_config(page_title="ママのためのAI数学解説", page_icon="📝")
@@ -26,13 +27,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 関数: 解説生成（二段構え） ---
+# --- 関数: 解説生成 ---
 def generate_explanation(image, user_text):
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         return "エラー: APIキーが設定されていません。"
     
     genai.configure(api_key=api_key)
+    
+    # モデルは確実に使える「gemini-1.5-flash」を指定
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
     base_prompt = """
     あなたは中学生・高校生に数学を教える優しい先生です。
@@ -43,33 +47,19 @@ def generate_explanation(image, user_text):
     3. 【解説】: 式変形を含めて丁寧に。数式はLaTeX形式 ($...$) で書いてください。
     """
     
+    # 画像とテキストをリストにまとめる（順序も重要）
     input_content = [base_prompt]
     if user_text:
         input_content.append(f"【ユーザーからの補足情報】: {user_text}")
+    
+    # 画像オブジェクトをそのままリストに追加
     input_content.append(image)
     
-    # ★【修正点】確実に動くモデルを順番に試すロジックに変更
-    
-    # 1. まずは「Flash-001（特定バージョン）」で試す
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash-001')
         response = model.generate_content(input_content)
         return response.text
-    except Exception as e1:
-        # 2. ダメなら「Flash（エイリアス）」で試す
-        try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(input_content)
-            return response.text
-        except Exception as e2:
-            # 3. それもダメなら「Pro Vision（安定版）」で試す
-            try:
-                model = genai.GenerativeModel('gemini-pro-vision')
-                response = model.generate_content(input_content)
-                return response.text
-            except Exception as e3:
-                # 全滅した場合はエラーを表示
-                return f"エラーが発生しました。\nFlash-001: {e1}\nFlash: {e2}\nPro Vision: {e3}"
+    except Exception as e:
+        return f"エラーが発生しました: {e}"
 
 # ==========================================
 # アプリ画面
@@ -98,10 +88,15 @@ if uploaded_file:
     
     if st.button('解説を作成する'):
         with st.spinner('AI先生が解説を書いています... ✏️'):
-            image_data = {"mime_type": uploaded_file.type, "data": uploaded_file.getvalue()}
-            explanation = generate_explanation(image_data, user_note)
-            st.session_state['explanation'] = explanation
-            st.session_state['show_email_form'] = True
+            try:
+                # ★ここを変更：画像をPillowで開いてから渡す
+                image = PIL.Image.open(uploaded_file)
+                
+                explanation = generate_explanation(image, user_note)
+                st.session_state['explanation'] = explanation
+                st.session_state['show_email_form'] = True
+            except Exception as e:
+                st.error(f"画像の読み込みに失敗しました: {e}")
 
 # 解説 & オファーエリア
 if 'explanation' in st.session_state:
