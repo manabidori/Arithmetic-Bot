@@ -1,5 +1,10 @@
 import streamlit as st
 import google.generativeai as genai
+
+# --- 診断用コード（ここから） ---
+st.write(f"現在のライブラリバージョン: {genai.__version__}")
+# --- 診断用コード（ここまで） ---
+
 import os
 import time
 
