@@ -26,6 +26,42 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- 関数: 最適なモデルを自動で探す ---
+def get_vision_model():
+    """あなたのAPIキーで使えるモデルの中から、画像認識ができるものを自動選択します"""
+    try:
+        # 利用可能なモデル一覧を取得
+        available_models = genai.list_models()
+        
+        # 優先順位リスト（上から順に探します）
+        priority_models = [
+            'gemini-1.5-flash',
+            'gemini-1.5-flash-001',
+            'gemini-1.5-pro',
+            'gemini-pro-vision',
+        ]
+        
+        # 利用可能なモデル名だけのリストを作成
+        available_names = [m.name.replace('models/', '') for m in available_models]
+        
+        # 優先リストにあるモデルが見つかればそれを返す
+        for model_name in priority_models:
+            if model_name in available_names:
+                return genai.GenerativeModel(model_name)
+        
+        # 見つからない場合は、'vision' か 'flash' が含まれるモデルを探す
+        for m in available_models:
+            if 'generateContent' in m.supported_generation_methods:
+                if 'flash' in m.name or 'vision' in m.name:
+                    return genai.GenerativeModel(m.name)
+        
+        # 最終手段：デフォルト（gemini-1.5-flash）を指定
+        return genai.GenerativeModel('gemini-1.5-flash')
+
+    except Exception as e:
+        # APIキーエラーなどでリスト取得に失敗した場合もデフォルトを返す
+        return genai.GenerativeModel('gemini-1.5-flash')
+
 # --- 関数: 解説生成 ---
 def generate_explanation(image, user_text):
     api_key = os.environ.get("GOOGLE_API_KEY")
@@ -33,8 +69,9 @@ def generate_explanation(image, user_text):
         return "エラー: APIキーが設定されていません。"
     
     genai.configure(api_key=api_key)
-    # ★ここを修正しました（-001を追加）
-    model = genai.GenerativeModel('gemini-1.5-flash-001')
+    
+    # ★自動選択ロジックを使ってモデルを決める
+    model = get_vision_model()
     
     base_prompt = """
     あなたは中学生・高校生に数学を教える優しい先生です。
@@ -51,10 +88,13 @@ def generate_explanation(image, user_text):
     input_content.append(image)
     
     try:
+        # どのモデルが選ばれたかを確認したい場合はコメントアウトを外す
+        # print(f"Selected Model: {model.model_name}")
+        
         response = model.generate_content(input_content)
         return response.text
     except Exception as e:
-        return f"エラーが発生しました: {e}"
+        return f"エラーが発生しました: {e}\n（使用モデル: {model.model_name}）"
 
 # ==========================================
 # アプリ画面
@@ -83,8 +123,13 @@ if uploaded_file:
     
     if st.button('解説を作成する'):
         with st.spinner('AI先生が解説を書いています... ✏️'):
+            # 画像データの準備
             image_data = {"mime_type": uploaded_file.type, "data": uploaded_file.getvalue()}
+            
+            # Gemini呼び出し
             explanation = generate_explanation(image_data, user_note)
+            
+            # 結果を保存
             st.session_state['explanation'] = explanation
             st.session_state['show_email_form'] = True
 
