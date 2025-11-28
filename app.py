@@ -36,7 +36,7 @@ def generate_explanation(image, user_text):
         return "エラー: APIキーが設定されていません。"
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
     
     # プロンプト（AIへの指示書）
     base_prompt = """
