@@ -1,5 +1,16 @@
 import streamlit as st
 import google.generativeai as genai
+
+# --- 診断用コード（ここから） ---
+st.subheader("🔍 あなたのAPIキーで使えるモデル一覧")
+try:
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            st.code(m.name)
+except Exception as e:
+    st.error(f"APIキーのエラー: {e}")
+# --- 診断用コード（ここまで） ---
+
 import os
 import time
 
