@@ -1,18 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
-
-# --- 診断用コード（ここから） ---
-st.subheader("🔍 あなたのAPIキーで使えるモデル一覧")
-try:
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            st.code(m.name)
-except Exception as e:
-    st.error(f"APIキーのエラー: {e}")
-# --- 診断用コード（ここまで） ---
-
 import os
-import time
 
 # ページ設定
 st.set_page_config(page_title="ママのためのAI数学解説", page_icon="📝")
@@ -32,53 +20,47 @@ st.markdown("""
         text-align: center;
         color: #333;
     }
-    /* 補足入力欄を少し目立たせる */
     .stTextArea textarea {
         background-color: #fafafa;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 関数: 解説生成 (画像 + テキスト) ---
+# --- 関数: 解説生成 ---
 def generate_explanation(image, user_text):
-    # APIキーの読み込み（Streamlit CloudのSecretsから）
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         return "エラー: APIキーが設定されていません。"
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # ★ここを修正しました（-001を追加）
+    model = genai.GenerativeModel('gemini-1.5-flash-001')
     
-    # プロンプト（AIへの指示書）
     base_prompt = """
     あなたは中学生・高校生に数学を教える優しい先生です。
     ユーザーから提供された「画像」と「補足テキスト」をもとに問題を解き、以下のフォーマットで解説してください。
-    
-    ※画像が見えにくい場合でも、補足テキストの情報が正しいものとして優先してください。
     
     1. 【答え】: 最初に答えをズバリ書く
     2. 【考え方】: どう解くかの方針
     3. 【解説】: 式変形を含めて丁寧に。数式はLaTeX形式 ($...$) で書いてください。
     """
     
-    # 補足テキストがある場合は、それをプロンプトに組み込む
     input_content = [base_prompt]
     if user_text:
         input_content.append(f"【ユーザーからの補足情報】: {user_text}")
     input_content.append(image)
     
     try:
-        # Geminiはリスト形式で [テキスト, 画像] を渡すと両方見てくれます
         response = model.generate_content(input_content)
         return response.text
     except Exception as e:
         return f"エラーが発生しました: {e}"
 
 # ==========================================
-# アプリ画面の構築
+# アプリ画面
 # ==========================================
 
-# 1. ヘッダー＆トップ広告
+# ヘッダー
 st.markdown("<h1 class='main-header'>📝 ママのためのAI数学解説</h1>", unsafe_allow_html=True)
 st.caption("写真を撮るだけ。AIが個別指導塾のような解説を作ります。")
 
@@ -91,43 +73,28 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-
-# 2. 入力エリア（画像 + テキスト）
+# 入力エリア
 st.subheader("1. 問題を入力する")
 uploaded_file = st.file_uploader("問題の写真をアップロードしてください", type=["jpg", "png", "jpeg"])
-
-# --- 【追加】補足テキスト入力欄 ---
-user_note = st.text_area(
-    "補足情報（任意）", 
-    placeholder="写真で文字が切れている場合や、特定の問題番号（例: (3)だけ解いて）などの指定があればここに入力してください。",
-    height=100
-)
+user_note = st.text_area("補足情報（任意）", placeholder="（例）問3だけ教えてください、文字が読みにくい場合は...", height=100)
 
 if uploaded_file:
-    # 画像表示
     st.image(uploaded_file, caption='アップロードされた問題', use_column_width=True)
     
-    # 解析ボタン
     if st.button('解説を作成する'):
         with st.spinner('AI先生が解説を書いています... ✏️'):
-            # 画像データの準備
             image_data = {"mime_type": uploaded_file.type, "data": uploaded_file.getvalue()}
-            
-            # Gemini呼び出し
             explanation = generate_explanation(image_data, user_note)
-            
-            # 結果をセッションステート（メモリ）に保存して表示
             st.session_state['explanation'] = explanation
             st.session_state['show_email_form'] = True
 
-# 3. 解説表示 & オファーエリア
+# 解説 & オファーエリア
 if 'explanation' in st.session_state:
     st.markdown("---")
     st.subheader("💡 AIによる解説")
     st.write(st.session_state['explanation'])
     st.markdown("---")
 
-    # --- メールアドレス取得フック ---
     if st.session_state.get('show_email_form'):
         st.info("💡 **この解説を「お子様用プリント（PDF）」にして受け取りますか？**")
         st.write("メールアドレスを入力すると、整ったレイアウトのPDF版解説をお送りします。")
@@ -136,27 +103,16 @@ if 'explanation' in st.session_state:
             user_email = st.text_input("メールアドレスを入力", placeholder="example@email.com")
             submitted = st.form_submit_button("PDFをメールで受け取る 📩")
             
-            if submitted and user_email:
-                if "@" in user_email:
-                    # ここで本来はCSV保存やメール送信を行いますが、
-                    # GitHub上のコードではサーバーレスのため「表示のみ」にします。
-                    
-                    st.success("ありがとうございます！ 送信を受け付けました。")
-                    st.balloons()
-                    
-                    # --- 【広告エリア B (サンクス広告)】 ---
-                    st.markdown("""
-                    <div class='ad-banner' style='background-color: #fff0f5; border-color: #ff69b4;'>
-                        <h3>🎉 PDFが届くまでの間に...</h3>
-                        <p><strong>「解き直し」こそが成績アップの鍵です。</strong><br>
-                        私たちのサービスでは、類似問題を自動作成して定着をサポートします。</p>
-                        <a href="https://your-service-url.com" target="_blank" style='font-size: 1.2em; font-weight: bold;'>👉 今だけ初月無料キャンペーン中！</a>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.error("正しいメールアドレスを入力してください。")
-
-# サイドバー広告
-st.sidebar.title("ℹ️ 運営サービス")
-st.sidebar.info("このアプリは「〇〇学習塾」が運営しています。")
-st.sidebar.markdown("[公式サイトはこちら](https://your-service-url.com)")
+            if submitted and user_email and "@" in user_email:
+                st.success("ありがとうございます！ 送信を受け付けました。")
+                st.balloons()
+                # --- 【広告エリア B】 ---
+                st.markdown("""
+                <div class='ad-banner' style='background-color: #fff0f5; border-color: #ff69b4;'>
+                    <h3>🎉 PDFが届くまでの間に...</h3>
+                    <p><strong>「解き直し」こそが成績アップの鍵です。</strong></p>
+                    <a href="https://your-service-url.com" target="_blank" style='font-size: 1.2em; font-weight: bold;'>👉 今だけ初月無料キャンペーン中！</a>
+                </div>
+                """, unsafe_allow_html=True)
+            elif submitted:
+                st.error("正しいメールアドレスを入力してください。")
