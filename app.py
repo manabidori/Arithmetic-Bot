@@ -6,9 +6,10 @@ import PIL.Image
 # ページ設定
 st.set_page_config(page_title="ママのためのAI数学解説", page_icon="📝")
 
-# --- CSS ---
+# --- CSS（デザイン調整） ---
 st.markdown("""
 <style>
+    /* 広告バナーのデザイン */
     .ad-banner {
         background-color: #f0f8ff;
         padding: 15px;
@@ -16,17 +17,23 @@ st.markdown("""
         border: 2px dashed #4169e1;
         text-align: center;
         margin-bottom: 20px;
+        color: #333333; /* 文字色を黒に固定 */
     }
+    .ad-banner h3 {
+        color: #333333 !important;
+    }
+    .ad-banner p {
+        color: #333333 !important;
+    }
+    
     .main-header {
         text-align: center;
-        color: #333;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # --- 関数: 確実に動くモデルを見つける ---
 def get_working_model():
-    """APIキーを使って実際に通信できるモデルを探し出します"""
     try:
         models = list(genai.list_models())
         vision_models = []
@@ -59,7 +66,6 @@ def generate_explanation(image, user_text, grade_level):
     if not model:
         return "エラー: 利用可能なAIモデルが見つかりませんでした。"
 
-    # ★プロンプトを大幅に強化（学年対応・別解対応）
     base_prompt = f"""
     あなたはプロの家庭教師です。
     ユーザーから提供された「画像」の問題を解き、以下の条件に従って解説してください。
@@ -68,12 +74,10 @@ def generate_explanation(image, user_text, grade_level):
     この解説を読むのは **{grade_level}** の子供とその保護者です。
     
     【制約事項】
-    1. **未習範囲の禁止**: {grade_level}までに習わない公式や知識（方程式や三平方の定理など）は絶対に使わないでください。その学年の教科書レベルの解き方で説明してください。
+    1. **未習範囲の禁止**: {grade_level}までに習わない公式や知識は絶対に使わないでください。
     2. **わかりやすさ**: 専門用語は避け、子供が一人でも読めるように噛み砕いて説明してください。
     
     【出力フォーマット】
-    以下の構成で出力してください。
-    
     ## 1. 答え
     （答えをズバリ書く）
     
@@ -81,10 +85,10 @@ def generate_explanation(image, user_text, grade_level):
     （この問題を解くためのポイントや方針を短く）
     
     ## 3. 詳しい解説
-    （式だけでなく、「なぜそうなるのか」を言葉で丁寧に。数式はLaTeX形式 $...$ で書く）
+    （式変形を含めて丁寧に。数式はLaTeX形式 $...$ で書く）
     
     ## 4. 別の解き方（もしあれば）
-    （別解や、検算の方法、図を使った考え方などがあれば提案してください。「理解を深めるためのプラスアルファ」をお願いします）
+    （別解や、検算の方法、図を使った考え方など）
     """
     
     input_content = [base_prompt]
@@ -118,12 +122,11 @@ st.markdown("""
 # 入力エリア
 st.subheader("1. 問題を入力する")
 
-# ★学年選択セレクトボックスを追加
 grade_options = [
     "小学1年生", "小学2年生", "小学3年生", "小学4年生", "小学5年生", "小学6年生",
     "中学1年生", "中学2年生", "中学3年生", "高校生以上"
 ]
-selected_grade = st.selectbox("お子様の学年を選んでください（解説のレベルを調整します）", grade_options, index=2)
+selected_grade = st.selectbox("お子様の学年を選んでください", grade_options, index=2)
 
 uploaded_file = st.file_uploader("問題の写真をアップロードしてください", type=["jpg", "png", "jpeg"])
 user_note = st.text_area("補足情報（任意）", placeholder="（例）問3だけ教えてください...", height=100)
@@ -135,13 +138,9 @@ if uploaded_file:
         with st.spinner(f'{selected_grade}向けの解説を作成しています... ✏️'):
             try:
                 image = PIL.Image.open(uploaded_file).convert('RGB')
-                
-                # 学年情報を渡して解説生成
                 explanation = generate_explanation(image, user_note, selected_grade)
-                
                 st.session_state['explanation'] = explanation
                 st.session_state['show_email_form'] = True
-                
             except Exception as e:
                 st.error(f"画像の読み込み処理でエラーが発生しました: {e}")
 
