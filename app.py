@@ -28,23 +28,17 @@ st.markdown("""
 def get_working_model():
     """APIキーを使って実際に通信できるモデルを探し出します"""
     try:
-        # 1. 利用可能なモデル一覧を取得
         models = list(genai.list_models())
-        
-        # 2. 'generateContent' が使えるモデルの名前リストを作る
         vision_models = []
         for m in models:
             if 'generateContent' in m.supported_generation_methods:
                 vision_models.append(m.name)
         
-        # 3. 優先順位に従ってモデルを選ぶ（リストにある正確な名前を使う）
-        # Flash -> Pro Vision -> Pro の順で探す
         for target in ['flash', 'vision', 'pro']:
             for name in vision_models:
                 if target in name:
                     return genai.GenerativeModel(name)
         
-        # 見つからなければ最初のものを返す
         if vision_models:
             return genai.GenerativeModel(vision_models[0])
             
@@ -54,36 +48,51 @@ def get_working_model():
         return None
 
 # --- 関数: 解説生成 ---
-def generate_explanation(image, user_text):
+def generate_explanation(image, user_text, grade_level):
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         return "エラー: APIキーが設定されていません。"
     
     genai.configure(api_key=api_key)
     
-    # ★自動検出したモデルを使用
     model = get_working_model()
     if not model:
         return "エラー: 利用可能なAIモデルが見つかりませんでした。"
 
-    # プロンプト作成
-    base_prompt = """
-    あなたは中学生・高校生に数学を教える優しい先生です。
-    ユーザーから提供された「画像」と「補足テキスト」をもとに問題を解き、以下のフォーマットで解説してください。
+    # ★プロンプトを大幅に強化（学年対応・別解対応）
+    base_prompt = f"""
+    あなたはプロの家庭教師です。
+    ユーザーから提供された「画像」の問題を解き、以下の条件に従って解説してください。
     
-    1. 【答え】: 最初に答えをズバリ書く
-    2. 【考え方】: どう解くかの方針
-    3. 【解説】: 式変形を含めて丁寧に。数式はLaTeX形式 ($...$) で書いてください。
+    【対象者】
+    この解説を読むのは **{grade_level}** の子供とその保護者です。
+    
+    【制約事項】
+    1. **未習範囲の禁止**: {grade_level}までに習わない公式や知識（方程式や三平方の定理など）は絶対に使わないでください。その学年の教科書レベルの解き方で説明してください。
+    2. **わかりやすさ**: 専門用語は避け、子供が一人でも読めるように噛み砕いて説明してください。
+    
+    【出力フォーマット】
+    以下の構成で出力してください。
+    
+    ## 1. 答え
+    （答えをズバリ書く）
+    
+    ## 2. 考え方
+    （この問題を解くためのポイントや方針を短く）
+    
+    ## 3. 詳しい解説
+    （式だけでなく、「なぜそうなるのか」を言葉で丁寧に。数式はLaTeX形式 $...$ で書く）
+    
+    ## 4. 別の解き方（もしあれば）
+    （別解や、検算の方法、図を使った考え方などがあれば提案してください。「理解を深めるためのプラスアルファ」をお願いします）
     """
     
-    # 画像とテキストをリストにまとめる
     input_content = [base_prompt]
     if user_text:
         input_content.append(f"【ユーザーからの補足情報】: {user_text}")
     input_content.append(image)
     
     try:
-        # 生成実行
         response = model.generate_content(input_content)
         return response.text
     except Exception as e:
@@ -95,9 +104,9 @@ def generate_explanation(image, user_text):
 
 # ヘッダー
 st.markdown("<h1 class='main-header'>📝 ママのためのAI数学解説</h1>", unsafe_allow_html=True)
-st.caption("写真を撮るだけ。AIが個別指導塾のような解説を作ります。")
+st.caption("写真を撮るだけ。AIがお子様の学年に合わせた解説を作ります。")
 
-# --- 【広告エリア A】 ---
+# 広告A
 st.markdown("""
 <div class='ad-banner'>
     <h3>📢 【PR】お子様の成績にお悩みですか？</h3>
@@ -108,21 +117,27 @@ st.markdown("""
 
 # 入力エリア
 st.subheader("1. 問題を入力する")
+
+# ★学年選択セレクトボックスを追加
+grade_options = [
+    "小学1年生", "小学2年生", "小学3年生", "小学4年生", "小学5年生", "小学6年生",
+    "中学1年生", "中学2年生", "中学3年生", "高校生以上"
+]
+selected_grade = st.selectbox("お子様の学年を選んでください（解説のレベルを調整します）", grade_options, index=2)
+
 uploaded_file = st.file_uploader("問題の写真をアップロードしてください", type=["jpg", "png", "jpeg"])
 user_note = st.text_area("補足情報（任意）", placeholder="（例）問3だけ教えてください...", height=100)
 
 if uploaded_file:
-    # 画像を表示
     st.image(uploaded_file, caption='アップロードされた問題', use_column_width=True)
     
     if st.button('解説を作成する'):
-        with st.spinner('AI先生が解説を書いています... ✏️'):
+        with st.spinner(f'{selected_grade}向けの解説を作成しています... ✏️'):
             try:
-                # ★画像を安全な形式（RGB）に変換して読み込む
                 image = PIL.Image.open(uploaded_file).convert('RGB')
                 
-                # 解説生成
-                explanation = generate_explanation(image, user_note)
+                # 学年情報を渡して解説生成
+                explanation = generate_explanation(image, user_note, selected_grade)
                 
                 st.session_state['explanation'] = explanation
                 st.session_state['show_email_form'] = True
@@ -148,7 +163,7 @@ if 'explanation' in st.session_state:
             if submitted and user_email and "@" in user_email:
                 st.success("ありがとうございます！ 送信を受け付けました。")
                 st.balloons()
-                # --- 【広告エリア B】 ---
+                # 広告B
                 st.markdown("""
                 <div class='ad-banner' style='background-color: #fff0f5; border-color: #ff69b4;'>
                     <h3>🎉 PDFが届くまでの間に...</h3>
